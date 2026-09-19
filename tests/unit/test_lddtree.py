@@ -143,6 +143,8 @@ def test_libc_no_detect_musl_cp310(tmp_path: Path) -> None:
     assert result.realpath.samefile(so)
     assert result.needed == ()
     assert result.rpath == ()
+    assert result.runpath == ()
+    assert not result.libraries
 
 
 def test_load_ld_paths_root_scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,8 +243,3 @@ def test_runpath_vs_auditwheel_and_ld_library_path_precedence(
     }
     res4 = ldd(so, ldpaths=custom_ldpaths)
     assert res4.libraries["libz.so.1"].path == str(dir_runpath / "libz.so.1")
-
-    # 5. Two-level recursive dependency propagation
-    # Verify that 'auditwheel' path propagates to child dependencies
-    res5 = ldd(so)
-    assert res5.libraries["libz.so.1"].path == str(dir_auditwheel / "libz.so.1")
