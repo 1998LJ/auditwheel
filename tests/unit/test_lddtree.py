@@ -150,7 +150,8 @@ def test_ld_paths_from_arg(arg, env, expected, monkeypatch):
 
 
 def test_load_ld_paths_keeps_environment_paths_separate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     auditwheel_path = tmp_path / "auditwheel"
     ld_library_path = tmp_path / "ld-library"
