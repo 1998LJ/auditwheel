@@ -334,24 +334,24 @@ def load_ld_paths(
     dict containing library paths to search
 
     """
-    ldpaths: dict[str, list[str]] = {"conf": [], "env": [], "interp": []}
+    ldpaths: dict[str, list[str]] = {"auditwheel": [], "conf": [], "env": [], "interp": []}
 
     ld_library_path = os.environ.get("LD_LIBRARY_PATH")
     if root != "/" and ld_library_path is not None:
         log.warning("ignoring LD_LIBRARY_PATH due to ROOT usage")
         ld_library_path = None
 
-    # Load up $AUDITWHEEL_LD_LIBRARY_PATH and $LD_LIBRARY_PATH
-    env_ldpath = ":".join(
-        filter(None, (os.environ.get("AUDITWHEEL_LD_LIBRARY_PATH"), ld_library_path)),
-    )
-
-    if env_ldpath:
+    # Keep AUDITWHEEL_LD_LIBRARY_PATH separate from LD_LIBRARY_PATH so it can
+    # override DT_RUNPATH without changing the historical LD_LIBRARY_PATH order.
+    auditwheel_ld_library_path = os.environ.get("AUDITWHEEL_LD_LIBRARY_PATH", "")
+    if auditwheel_ld_library_path:
         # TODO: If this contains $ORIGIN, we probably have to parse this
         # on a per-ELF basis so it can get turned into the right thing.
-        # don't pass root: in case root != "/", only AUDITWHEEL_LD_LIBRARY_PATH is checked
-        # it shall already contain fully resolved paths
-        ldpaths["env"] = parse_ld_paths(env_ldpath, path="")
+        # Don't pass root: it shall already contain fully resolved paths.
+        ldpaths["auditwheel"] = parse_ld_paths(auditwheel_ld_library_path, path="")
+
+    if ld_library_path:
+        ldpaths["env"] = parse_ld_paths(ld_library_path, path="")
 
     if libc == Libc.MUSL:
         # from https://git.musl-libc.org/cgit/musl/tree/ldso
@@ -388,10 +388,29 @@ def ld_paths_from_arg(args_ldpaths: str | None) -> dict[str, list[str]] | None:
         return None
 
     return {
+        "auditwheel": parse_ld_paths(os.environ.get("AUDITWHEEL_LD_LIBRARY_PATH", "")),
         "conf": parse_ld_paths(args_ldpaths),
-        "env": parse_ld_paths(os.environ.get("AUDITWHEEL_LD_LIBRARY_PATH", "")),
+        "env": [],
         "interp": [],
     }
+
+
+def _get_search_paths(
+    ldpaths: dict[str, list[str]],
+    rpaths: list[str],
+    runpaths: list[str],
+) -> list[str]:
+    """Return library search paths in auditwheel's resolution order."""
+    return (
+        ldpaths["rpath"]
+        + rpaths
+        + ldpaths.get("auditwheel", [])
+        + runpaths
+        + ldpaths["runpath"]
+        + ldpaths["env"]
+        + ldpaths["conf"]
+        + ldpaths["interp"]
+    )
 
 
 def find_lib(
@@ -454,8 +473,8 @@ def ldd(
         The path under ``root`` to search
     ldpaths
         dict containing library paths to search; should have the keys:
-        conf, env, interp. If not supplied, the function ``load_ld_paths``
-        will be called.
+        auditwheel, conf, env, interp. If not supplied, the function
+        ``load_ld_paths`` will be called.
     display
         The path to show rather than ``path``
     exclude
@@ -587,15 +606,7 @@ def ldd(
 
     assert ldpaths is not None  # noqa: S101
 
-    all_ldpaths = (
-        ldpaths["rpath"]
-        + rpaths
-        + runpaths
-        + ldpaths["env"]
-        + ldpaths["runpath"]
-        + ldpaths["conf"]
-        + ldpaths["interp"]
-    )
+    all_ldpaths = _get_search_paths(ldpaths, rpaths, runpaths)
     _excluded_libs: set[str] = set()
     for soname in needed:
         if soname in _all_libs:
