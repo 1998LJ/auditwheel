@@ -4,7 +4,14 @@ from pathlib import Path
 import pytest
 
 from auditwheel.architecture import Architecture
-from auditwheel.lddtree import LIBPYTHON_RE, ld_paths_from_arg, ldd, parse_ld_paths
+from auditwheel.lddtree import (
+    LIBPYTHON_RE,
+    _get_search_paths,
+    ld_paths_from_arg,
+    ldd,
+    load_ld_paths,
+    parse_ld_paths,
+)
 from auditwheel.libc import Libc
 from auditwheel.tools import zip2dir
 
@@ -114,19 +121,74 @@ def test_parse_ld_paths_origin(origin):
     [
         (None, "", None),
         (None, str(HERE.parent), None),
-        ("", "", {"conf": [], "env": [], "interp": []}),
-        (str(HERE), "", {"conf": [str(HERE)], "env": [], "interp": []}),
-        ("", str(HERE), {"conf": [], "env": [str(HERE)], "interp": []}),
+        ("", "", {"auditwheel": [], "conf": [], "env": [], "interp": []}),
+        (
+            str(HERE),
+            "",
+            {"auditwheel": [], "conf": [str(HERE)], "env": [], "interp": []},
+        ),
+        (
+            "",
+            str(HERE),
+            {"auditwheel": [str(HERE)], "conf": [], "env": [], "interp": []},
+        ),
         (
             str(HERE),
             str(HERE.parent),
-            {"conf": [str(HERE)], "env": [str(HERE.parent)], "interp": []},
+            {
+                "auditwheel": [str(HERE.parent)],
+                "conf": [str(HERE)],
+                "env": [],
+                "interp": [],
+            },
         ),
     ],
 )
 def test_ld_paths_from_arg(arg, env, expected, monkeypatch):
     monkeypatch.setitem(os.environ, "AUDITWHEEL_LD_LIBRARY_PATH", env)
     assert ld_paths_from_arg(arg) == expected
+
+
+def test_load_ld_paths_keeps_environment_paths_separate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    auditwheel_path = tmp_path / "auditwheel"
+    ld_library_path = tmp_path / "ld-library"
+    auditwheel_path.mkdir()
+    ld_library_path.mkdir()
+    monkeypatch.setenv("AUDITWHEEL_LD_LIBRARY_PATH", str(auditwheel_path))
+    monkeypatch.setenv("LD_LIBRARY_PATH", str(ld_library_path))
+
+    load_ld_paths.cache_clear()
+    try:
+        result = load_ld_paths(None)
+    finally:
+        load_ld_paths.cache_clear()
+
+    assert result["auditwheel"] == [str(auditwheel_path)]
+    assert result["env"] == [str(ld_library_path)]
+
+
+def test_search_path_precedence() -> None:
+    ldpaths = {
+        "auditwheel": ["auditwheel"],
+        "conf": ["conf"],
+        "env": ["ld-library"],
+        "interp": ["interp"],
+        "rpath": ["inherited-rpath"],
+        "runpath": ["inherited-runpath"],
+    }
+
+    assert _get_search_paths(ldpaths, ["rpath"], ["runpath"]) == [
+        "inherited-rpath",
+        "rpath",
+        "auditwheel",
+        "runpath",
+        "inherited-runpath",
+        "ld-library",
+        "conf",
+        "interp",
+    ]
 
 
 def test_libc_no_detect_musl_cp310(tmp_path: Path) -> None:
