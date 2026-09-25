@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from auditwheel import repair
 from auditwheel.patcher import ElfPatcher
 from auditwheel.repair import append_rpath_within_wheel
 
@@ -15,6 +18,50 @@ class MockedElfPatcher(ElfPatcher):
     def get_rpath_direct(self, file_name: Path) -> str:
         self.get_rpath_direct_called.append(file_name)
         return self._existing_rpath
+
+
+def test_validate_no_executable_stack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    good = tmp_path / "good.so"
+    bad = tmp_path / "libs" / "bad.so"
+    bad.parent.mkdir()
+    good.touch()
+    bad.touch()
+
+    monkeypatch.setattr(
+        repair,
+        "elf_file_filter",
+        lambda paths: [(path, path.name) for path in paths],
+    )
+    monkeypatch.setattr(
+        repair,
+        "elf_has_executable_stack",
+        lambda elf: elf == "bad.so",
+    )
+
+    with pytest.raises(RuntimeError, match="executable stack") as exc_info:
+        repair._validate_no_executable_stack(tmp_path)
+
+    assert "libs/bad.so" in str(exc_info.value)
+
+
+def test_validate_no_executable_stack_accepts_clean_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lib = tmp_path / "good.so"
+    lib.touch()
+
+    monkeypatch.setattr(
+        repair,
+        "elf_file_filter",
+        lambda paths: [(path, path.name) for path in paths],
+    )
+    monkeypatch.setattr(repair, "elf_has_executable_stack", lambda _elf: False)
+
+    repair._validate_no_executable_stack(tmp_path)
 
 
 def test_append_rpath(tmp_path: Path) -> None:

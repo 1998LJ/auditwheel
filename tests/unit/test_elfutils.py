@@ -5,11 +5,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 from elftools.common.exceptions import ELFError
+from elftools.elf.constants import P_FLAGS
 
 from auditwheel.elfutils import (
     elf_file_filter,
     elf_find_ucs2_symbols,
     elf_find_versioned_symbols,
+    elf_has_executable_stack,
     elf_read_dt_needed,
     elf_references_pyfpe_jbuf,
     get_undefined_symbols,
@@ -98,6 +100,32 @@ class TestElfFileFilter:
 
         # THEN
         assert len(list(result)) == 0
+
+
+class TestElfHasExecutableStack:
+    @pytest.mark.parametrize(
+        ("flags", "expected"),
+        [
+            (P_FLAGS.PF_R | P_FLAGS.PF_W, False),
+            (P_FLAGS.PF_R | P_FLAGS.PF_W | P_FLAGS.PF_X, True),
+        ],
+    )
+    def test_gnu_stack_flags(self, flags: int, expected: bool) -> None:
+        elf = Mock()
+        elf.iter_segments.return_value = [
+            {"p_type": "PT_LOAD", "p_flags": P_FLAGS.PF_X},
+            {"p_type": "PT_GNU_STACK", "p_flags": flags},
+        ]
+
+        assert elf_has_executable_stack(elf) is expected
+
+    def test_no_gnu_stack_segment(self) -> None:
+        elf = Mock()
+        elf.iter_segments.return_value = [
+            {"p_type": "PT_LOAD", "p_flags": P_FLAGS.PF_X},
+        ]
+
+        assert elf_has_executable_stack(elf) is False
 
 
 class TestElfFindVersionedSymbols:
