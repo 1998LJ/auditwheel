@@ -108,7 +108,11 @@ def test_repair_reports_too_recent_symbols(monkeypatch, capsys, tmp_path):
             "libssl.so.3": {"OPENSSL_3.0.0"},
         },
     )
-    monkeypatch.setattr(auditwheel.wheel_abi, "analyze_wheel_abi", lambda *args, **kwargs: wheel_abi)
+    monkeypatch.setattr(
+        auditwheel.wheel_abi,
+        "analyze_wheel_abi",
+        lambda *_args, **_kwargs: wheel_abi,
+    )
 
     wheel = tmp_path / "foo-1.0-cp310-cp310-manylinux_2_17_x86_64.whl"
     wheel.write_text("")
