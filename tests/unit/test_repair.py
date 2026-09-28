@@ -59,7 +59,7 @@ def test_validate_no_executable_stack_accepts_clean_tree(
         "elf_file_filter",
         lambda paths: [(path, path.name) for path in paths],
     )
-    monkeypatch.setattr(repair, "elf_has_executable_stack", lambda elf: False)
+    monkeypatch.setattr(repair, "elf_has_executable_stack", lambda _elf: False)
 
     repair._validate_no_executable_stack(tmp_path)
 
