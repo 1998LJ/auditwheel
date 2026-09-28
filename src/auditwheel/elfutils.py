@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 from elftools.common.exceptions import ELFError
+from elftools.elf.constants import P_FLAGS
 from elftools.elf.dynamic import DynamicSection
 from elftools.elf.elffile import ELFFile
 from elftools.elf.gnuversions import GNUVerNeedSection
@@ -54,6 +55,14 @@ def elf_file_filter(paths: Iterable[Path]) -> Iterator[tuple[Path, ELFFile]]:
             except ELFError:
                 # not an elf file
                 continue
+
+
+def elf_has_executable_stack(elf: ELFFile) -> bool:
+    """Return whether an ELF requests an executable process stack."""
+    return any(
+        segment["p_type"] == "PT_GNU_STACK" and bool(segment["p_flags"] & P_FLAGS.PF_X)
+        for segment in elf.iter_segments()
+    )
 
 
 def elf_find_versioned_symbols(elf: ELFFile) -> Iterator[tuple[str, str]]:
