@@ -11,7 +11,11 @@ from pathlib import Path
 from subprocess import check_call
 from typing import TYPE_CHECKING
 
-from auditwheel.elfutils import elf_read_dt_needed
+from auditwheel.elfutils import (
+    elf_file_filter,
+    elf_has_executable_stack,
+    elf_read_dt_needed,
+)
 from auditwheel.hashfile import hashfile
 from auditwheel.lddtree import LIBPYTHON_RE
 from auditwheel.policy import get_replace_platforms
@@ -137,6 +141,14 @@ def repair_wheel(
 
         patcher.apply_updates()
 
+        assert ctx.path is not None  # noqa: S101
+        try:
+            _validate_no_executable_stack(ctx.path)
+        except RuntimeError:
+            # Do not let InWheelCtx write a rejected wheel while unwinding.
+            ctx.out_wheel = None
+            raise
+
         if update_tags:
             output_wheel = add_platforms(ctx, abis, get_replace_platforms(abis[0]))
 
@@ -153,6 +165,24 @@ def repair_wheel(
             (sbom_dir / "auditwheel.cdx.json").write_text(json.dumps(sbom_data))
 
     return output_wheel
+
+
+def _validate_no_executable_stack(root: Path) -> None:
+    files = (path for path in root.rglob("*") if path.is_file())
+    executable_stack_files = [
+        path for path, elf in elf_file_filter(files) if elf_has_executable_stack(elf)
+    ]
+    if not executable_stack_files:
+        return
+
+    libraries = "\n\t".join(
+        path.relative_to(root).as_posix() for path in executable_stack_files
+    )
+    msg = (
+        "Invalid binary wheel, found the following ELF file(s) "
+        f"with an executable stack:\n\t{libraries}\n"
+    )
+    raise RuntimeError(msg)
 
 
 def strip_symbols(libraries: Iterable[Path]) -> None:
