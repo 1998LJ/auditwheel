@@ -175,9 +175,7 @@ def _validate_no_executable_stack(root: Path) -> None:
     if not executable_stack_files:
         return
 
-    libraries = "\n\t".join(
-        path.relative_to(root).as_posix() for path in executable_stack_files
-    )
+    libraries = "\n\t".join(path.relative_to(root).as_posix() for path in executable_stack_files)
     msg = (
         "Invalid binary wheel, found the following ELF file(s) "
         f"with an executable stack:\n\t{libraries}\n"
