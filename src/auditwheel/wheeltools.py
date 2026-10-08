@@ -258,6 +258,16 @@ def add_platforms(
     in_info_tags = [tag for name, tag in info.items() if name == "Tag"]
     logger.info("Previous WHEEL info tags: %s", ", ".join(in_info_tags))
 
+    # Warn about pre-existing metadata inconsistencies, not intentional
+    # platform changes introduced by add_platforms().
+    _, _, _, input_filename_tags = parse_wheel_filename(wheel_ctx.in_wheel.name)
+    expected_input_tags = sorted(str(tag) for tag in input_filename_tags)
+    if sorted(in_info_tags) != expected_input_tags:
+        logger.warning(
+            "WHEEL Tag headers do not match wheel filename %s; normalizing metadata",
+            wheel_ctx.in_wheel.name,
+        )
+
     # The wheel filename is the source of truth for compatibility tags. WHEEL
     # requires one Tag header per expanded compatibility tag, so rebuilding
     # the set from the output filename also repairs missing, malformed, or
