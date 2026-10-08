@@ -238,9 +238,7 @@ def test_add_platforms_normalizes_wheel_tags(
         "py2-none-linux_x86_64",
         "py3-none-linux_x86_64",
     ]
-    assert (
-        "WHEEL Tag headers do not match wheel filename" in caplog.text
-    ) is expect_warning
+    assert ("WHEEL Tag headers do not match wheel filename" in caplog.text) is expect_warning
 
 
 def test_inwheel_no_distinfo():
