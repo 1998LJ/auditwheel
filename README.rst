@@ -28,6 +28,11 @@ consistent with the `PEP 600 manylinux_x_y
 checks the extension modules for the use of versioned symbols that exceed
 the ``manylinux`` ABI.
 
+``auditwheel validate``: checks that a binary wheel's platform tags match
+its ``.dist-info/WHEEL`` metadata and that its ELF dependencies satisfy all
+claimed manylinux, musllinux, or Android platform policies. The command exits
+with status ``0`` for a compliant wheel and a nonzero status otherwise.
+
 ``auditwheel repair``: copies these external shared libraries into the wheel itself,
 and automatically modifies the appropriate ``RPATH`` entries such that these libraries
 will be picked up at runtime. This accomplishes a similar result as if the libraries had
@@ -85,6 +90,15 @@ Inspecting a wheel: ::
     following shared library dependencies will need to be eliminated:
 
     libffi.so.5
+
+Validating a wheel for CI or package upload: ::
+
+    $ auditwheel validate example-1.0-cp312-cp312-manylinux_2_17_x86_64.whl
+
+The filename must claim a portable platform tag, its expanded tags must agree
+with the ``Tag`` headers in ``.dist-info/WHEEL``, and the wheel must satisfy
+every claimed policy. An untagged ``linux_x86_64`` wheel does not pass this
+check because it doesn't claim a portable ABI.
 
 Repairing a wheel. ::
 
