@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import stat
 import subprocess
 import time
 import zipfile
@@ -125,6 +126,8 @@ def dir2zip(
     zip_fname: Path,
     zip_compression_level: int,
     date_time: datetime | None,
+    *,
+    deterministic: bool = False,
 ) -> None:
     """Make a zip file `zip_fname` with contents of directory `in_dir`
 
@@ -144,13 +147,20 @@ def dir2zip(
         zlib.Z_BEST_COMPRESSION (9) for bandwidth-constrained or large amount of downloads
     date_time : Optional[datetime]
         Time stamp to set on each file in the archive
+    deterministic : bool
+        Normalize ZIP host and permissions, retaining only the executable bit.
 
     """
     start = time.perf_counter()
     in_dir = in_dir.resolve(strict=True)
     if date_time is None:
-        st = in_dir.stat()
-        date_time = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
+        if deterministic:
+            # ZIP timestamps start at 1980-01-01. When no reproducible-build
+            # epoch is supplied, use that earliest portable timestamp.
+            date_time = datetime(1980, 1, 1, tzinfo=timezone.utc)
+        else:
+            st = in_dir.stat()
+            date_time = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
     date_time_args = date_time.timetuple()[:6]
     if date_time_args < (1980, 1, 1, 0, 0, 0):
         logger.warning("dir2zip, clipping timestamp to 1980-01-01")
@@ -162,12 +172,19 @@ def dir2zip(
                 out_dname = f"{dname.relative_to(in_dir)}/"
                 zinfo = zipfile.ZipInfo.from_file(dname, out_dname)
                 zinfo.date_time = date_time_args
+                if deterministic:
+                    zinfo.create_system = 3
+                    zinfo.external_attr = (stat.S_IFDIR | 0o755) << 16 | 0x10
                 z.writestr(zinfo, b"")
             for file in files:
                 fname = dname / file
                 out_fname = fname.relative_to(in_dir)
                 zinfo = zipfile.ZipInfo.from_file(fname, out_fname)
                 zinfo.date_time = date_time_args
+                if deterministic:
+                    zinfo.create_system = 3
+                    permissions = 0o755 if fname.stat().st_mode & 0o111 else 0o644
+                    zinfo.external_attr = (stat.S_IFREG | permissions) << 16
                 zinfo.compress_type = compression
                 with fname.open("rb") as fp:
                     z.writestr(zinfo, fp.read(), compresslevel=zip_compression_level)

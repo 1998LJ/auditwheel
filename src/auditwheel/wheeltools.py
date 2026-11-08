@@ -110,7 +110,13 @@ class InWheel(InTemporaryDirectory):
     pack stuff up for you.
     """
 
-    def __init__(self, in_wheel: Path, out_wheel: Path | None = None) -> None:
+    def __init__(
+        self,
+        in_wheel: Path,
+        out_wheel: Path | None = None,
+        *,
+        deterministic: bool = False,
+    ) -> None:
         """Initialize in-wheel context manager
 
         Parameters
@@ -124,6 +130,7 @@ class InWheel(InTemporaryDirectory):
         self.in_wheel = in_wheel.absolute()
         self.out_wheel = None if out_wheel is None else out_wheel.absolute()
         self.zip_compression_level = zlib.Z_DEFAULT_COMPRESSION
+        self.deterministic = deterministic
         super().__init__()
 
     def __enter__(self) -> Path:
@@ -142,7 +149,13 @@ class InWheel(InTemporaryDirectory):
             timestamp = os.environ.get("SOURCE_DATE_EPOCH")
             if timestamp:
                 date_time = datetime.fromtimestamp(int(timestamp), tz=timezone.utc)
-            dir2zip(self.name, self.out_wheel, self.zip_compression_level, date_time)
+            dir2zip(
+                self.name,
+                self.out_wheel,
+                self.zip_compression_level,
+                date_time,
+                deterministic=self.deterministic,
+            )
         return super().__exit__(exc, value, tb)
 
 
@@ -162,7 +175,13 @@ class InWheelCtx(InWheel):
     ``wheel_path``.
     """
 
-    def __init__(self, in_wheel: Path, out_wheel: Path | None = None) -> None:
+    def __init__(
+        self,
+        in_wheel: Path,
+        out_wheel: Path | None = None,
+        *,
+        deterministic: bool = False,
+    ) -> None:
         """Init in-wheel context manager returning self from enter
 
         Parameters
@@ -173,7 +192,7 @@ class InWheelCtx(InWheel):
             filename of wheel to write after exiting.  If None, don't write and
             discard
         """
-        super().__init__(in_wheel, out_wheel)
+        super().__init__(in_wheel, out_wheel, deterministic=deterministic)
         self.path: Path | None = None
 
     def __enter__(self):  # type: ignore[no-untyped-def]

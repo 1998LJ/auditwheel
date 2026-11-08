@@ -99,6 +99,17 @@ Repairing a wheel. ::
 
     Fixed-up wheel written to /wheelhouse/cffi-1.5.2-cp35-cp35m-manylinux1_x86_64.whl
 
+For reproducible output ZIP metadata, add ``--deterministic`` to
+``auditwheel repair``. This uses the earliest ZIP timestamp (1980-01-01)
+unless ``SOURCE_DATE_EPOCH`` is set, normalizes file permissions to
+``0644`` (or ``0755`` for executables), and normalizes directory permissions
+to ``0755``. It preserves the executable bit and writes entries in the
+existing deterministic order; the default repair behavior is unchanged.
+
+::
+
+    $ auditwheel repair --deterministic mypackage-1.0-cp312-cp312-linux_x86_64.whl
+
 
 Limitations
 -----------

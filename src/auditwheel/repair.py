@@ -39,6 +39,7 @@ def repair_wheel(
     patcher: ElfPatcher,
     strip: bool,
     zip_compression_level: int,
+    deterministic: bool = False,
 ) -> Path | None:
     external_refs_by_fn = wheel_abi.full_external_refs
     # Do not repair a pure wheel, i.e. has no external refs
@@ -51,7 +52,7 @@ def repair_wheel(
     wheel_fname = wheel_path.name
 
     output_wheel = out_dir / wheel_fname
-    with InWheelCtx(wheel_path) as ctx:
+    with InWheelCtx(wheel_path, deterministic=deterministic) as ctx:
         ctx.out_wheel = output_wheel
         ctx.zip_compression_level = zip_compression_level
 

@@ -202,6 +202,7 @@ def test_wheel_source_date_epoch(timestamp, tmp_path, monkeypatch):
         LDPATHS=None,
         DISABLE_ISA_EXT_CHECK=False,
         ZIP_COMPRESSION_LEVEL=6,
+        DETERMINISTIC=False,
         PATCHER="none",
         cmd="repair",
         func=Mock(),
@@ -218,6 +219,48 @@ def test_wheel_source_date_epoch(timestamp, tmp_path, monkeypatch):
             assert file_date_time.timestamp() == timestamp[1]
 
 
+def test_repair_deterministic_zip_metadata(tmp_path, monkeypatch):
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    wheel = BUNDLED_WHEELS / "musllinux_1_2/testsimple-0.0.1-cp312-cp312-linux_x86_64.whl"
+    outputs = []
+    for i in range(2):
+        out_dir = tmp_path / f"run-{i}"
+        args = Namespace(
+            LIB_SDIR=".libs",
+            ONLY_PLAT=False,
+            PLAT="auto",
+            STRIP=False,
+            UPDATE_TAGS=True,
+            WHEEL_DIR=out_dir,
+            WHEEL_FILE=[wheel],
+            EXCLUDE=[],
+            LDPATHS=None,
+            DISABLE_ISA_EXT_CHECK=False,
+            ZIP_COMPRESSION_LEVEL=6,
+            DETERMINISTIC=True,
+            PATCHER="none",
+            cmd="repair",
+            func=Mock(),
+            prog="auditwheel",
+            verbose=1,
+        )
+        assert main_repair.execute(args, Mock()) == 0
+        (output,) = out_dir.glob("*.whl")
+        outputs.append(output)
+
+    assert outputs[0].read_bytes() == outputs[1].read_bytes()
+    with zipfile.ZipFile(outputs[0]) as wheel_file:
+        assert wheel_file.infolist()
+        for info in wheel_file.infolist():
+            assert info.date_time == (1980, 1, 1, 0, 0, 0)
+            assert info.create_system == 3
+            mode = info.external_attr >> 16
+            if info.is_dir():
+                assert mode & 0o777 == 0o755
+            else:
+                assert mode & 0o777 in (0o644, 0o755)
+
+
 def test_libpython(tmp_path, caplog):
     wheel = BUNDLED_WHEELS / "python_mscl-67.0.1.0-cp313-cp313-manylinux2014_aarch64.whl"
     args = Namespace(
@@ -232,6 +275,7 @@ def test_libpython(tmp_path, caplog):
         LDPATHS=None,
         DISABLE_ISA_EXT_CHECK=False,
         ZIP_COMPRESSION_LEVEL=6,
+        DETERMINISTIC=False,
         PATCHER="patchelf",
         cmd="repair",
         func=Mock(),

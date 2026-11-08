@@ -97,6 +97,13 @@ wheel will abort processing of subsequent wheels.
         default=True,
     )
     parser.add_argument(
+        "--deterministic",
+        dest="DETERMINISTIC",
+        action="store_true",
+        help="Normalize ZIP timestamps and permissions for reproducible repaired wheels",
+        default=False,
+    )
+    parser.add_argument(
         "--strip",
         dest="STRIP",
         action="store_true",
@@ -291,6 +298,7 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             patcher=patcher,
             strip=args.STRIP,
             zip_compression_level=args.ZIP_COMPRESSION_LEVEL,
+            deterministic=args.DETERMINISTIC,
         )
 
         if out_wheel is not None:

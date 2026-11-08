@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import argparse
 import lzma
+import os
+import stat
 import zipfile
 import zlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from auditwheel.tools import EnvironmentDefault, dir2zip, is_subdir, zip2dir
+from auditwheel.wheeltools import InWheelCtx
 
 
 @pytest.mark.parametrize(
@@ -205,6 +209,77 @@ def test_dir2zip_folders(tmp_path: Path) -> None:
             else:
                 assert info.filename == "dummy-1.0.dist-info/METADATA"
     assert len(expected_dirs) == 0
+
+
+def test_dir2zip_deterministic_archive_bytes_and_permissions(tmp_path: Path) -> None:
+
+    source = tmp_path / "source"
+    source.mkdir()
+    subdir = source / "package"
+    subdir.mkdir()
+    regular = subdir / "module.py"
+    regular.write_text("x = 1\n")
+    executable = subdir / "runner"
+    executable.write_text("#!/bin/sh\necho hi\n")
+
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+
+    regular.chmod(0o600)
+    executable.chmod(0o700)
+    subdir.chmod(0o700)
+    os.utime(source, (600_000_000, 600_000_000))
+    dir2zip(source, first, zlib.Z_DEFAULT_COMPRESSION, None, deterministic=True)
+
+    regular.chmod(0o664)
+    executable.chmod(0o755)
+    subdir.chmod(0o775)
+    os.utime(source, (1_700_000_000, 1_700_000_000))
+    dir2zip(source, second, zlib.Z_DEFAULT_COMPRESSION, None, deterministic=True)
+
+    assert first.read_bytes() == second.read_bytes()
+    with zipfile.ZipFile(first) as zipped:
+        assert [x.filename for x in zipped.infolist()] == [
+            "package/",
+            "package/module.py",
+            "package/runner",
+        ]
+        assert all(x.date_time == (1980, 1, 1, 0, 0, 0) for x in zipped.infolist())
+        modes = {x.filename: x.external_attr >> 16 for x in zipped.infolist()}
+        assert modes == {
+            "package/": stat.S_IFDIR | 0o755,
+            "package/module.py": stat.S_IFREG | 0o644,
+            "package/runner": stat.S_IFREG | 0o755,
+        }
+        assert all(x.create_system == 3 for x in zipped.infolist())
+
+
+def test_dir2zip_deterministic_respects_explicit_epoch(tmp_path: Path) -> None:
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("data")
+    output = tmp_path / "output.zip"
+    date_time = datetime(2024, 4, 2, tzinfo=timezone.utc)
+    dir2zip(source, output, zlib.Z_DEFAULT_COMPRESSION, date_time, deterministic=True)
+    with zipfile.ZipFile(output) as zipped:
+        assert zipped.infolist()[0].date_time == (2024, 4, 2, 0, 0, 0)
+
+
+def test_inwheelctx_deterministic_normalizes_output_metadata(tmp_path: Path, monkeypatch) -> None:
+
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    input_wheel = (
+        Path(__file__).parent
+        / "../bundled-wheels/glibc/testsimple-0.0.1-cp313-cp313-linux_x86_64.whl"
+    )
+    output_wheel = tmp_path / input_wheel.name
+    with InWheelCtx(input_wheel, output_wheel, deterministic=True):
+        pass
+    with zipfile.ZipFile(output_wheel) as zipped:
+        assert zipped.infolist()
+        assert all(x.date_time == (1980, 1, 1, 0, 0, 0) for x in zipped.infolist())
+        assert all(x.create_system == 3 for x in zipped.infolist())
 
 
 def test_is_subdir(tmp_path: Path) -> None:
