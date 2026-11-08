@@ -12,7 +12,7 @@ import pytest
 from jsonschema import validate
 
 from auditwheel.error import NonPlatformWheelError
-from auditwheel.main_show import execute
+from auditwheel.main_show import _format_versioned_symbols, execute
 
 _SCHEMA = json.loads(files("auditwheel").joinpath("show-schema.json").read_text())
 
@@ -271,6 +271,38 @@ def test_no_json_flag_uses_text_output(tmp_path, capsys, patch_wheel_abi):
         json.loads(out)
     assert "consistent with the following" in out
     assert "platform tag" in out
+
+
+def test_text_versioned_symbols_are_grouped_and_naturally_sorted(
+    tmp_path, capsys, patch_wheel_abi
+):
+    wheel = tmp_path / "foo-1.0-cp39-cp39-linux_x86_64.whl"
+    wheel.write_text("")
+    symbols = {
+        "libz.so.1": {"ZLIB_1.2.9", "ZLIB_1.2.3"},
+        "libc.so.6": {"GLIBC_2.17", "GLIBC_2.9", "GLIBC_2.10"},
+    }
+    patch_wheel_abi(return_value=_make_winfo(versioned_symbols=symbols))
+
+    assert execute(_make_args(wheel, use_json=False), argparse.ArgumentParser()) == 0
+    output = capsys.readouterr().out
+    expected = (
+        "  libc.so.6: GLIBC_2.9, GLIBC_2.10, GLIBC_2.17\n"
+        "  libz.so.1: ZLIB_1.2.3, ZLIB_1.2.9\n"
+    )
+    assert "system-provided shared libraries:\n" + expected in output
+    assert "with versions {" not in output
+
+
+def test_text_versioned_symbols_wrap_without_losing_values():
+    versions = {f"GLIBC_2.{n}" for n in range(1, 36)}
+    formatted = _format_versioned_symbols({"libc.so.6": versions})
+
+    lines = formatted.splitlines()
+    assert len(lines) > 2
+    assert all(len(line) <= 79 for line in lines)
+    assert all(line.startswith("    ") for line in lines[1:])
+    assert all(symbol in formatted for symbol in versions)
 
 
 def test_json_with_sym_policy_constraint(tmp_path, capsys, patch_wheel_abi):

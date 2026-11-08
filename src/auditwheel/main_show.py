@@ -40,6 +40,30 @@ def printp(text: str) -> None:
     print("\n".join(wrap(text, break_long_words=False, break_on_hyphens=False)))
 
 
+def _format_versioned_symbols(symbols: dict[str, set[str]]) -> str:
+    """Group versioned symbols by library in stable, human-readable order."""
+    import re
+    from textwrap import fill
+
+    def version_key(value: str) -> tuple[tuple[int, int | str], ...]:
+        return tuple(
+            (1, int(part)) if part.isdigit() else (0, part)
+            for part in re.split(r"(\d+)", value)
+        )
+
+    return "\n".join(
+        fill(
+            ", ".join(sorted(versions, key=version_key)),
+            width=79,
+            initial_indent=f"  {library}: ",
+            subsequent_indent="    ",
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        for library, versions in sorted(symbols.items())
+    )
+
+
 def _output_json(fn: str, winfo: WheelAbIInfo) -> None:
     from auditwheel import json
 
@@ -131,8 +155,6 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     policies = winfo.policies
 
-    libs_with_versions = [f"{k} with versions {v}" for k, v in winfo.versioned_symbols.items()]
-
     printp(
         f'{fn} is consistent with the following platform tag: "{winfo.overall_policy.name}".',
     )
@@ -160,7 +182,7 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if args.verbose < 1:
             return 0
 
-    if len(libs_with_versions) == 0:
+    if not winfo.versioned_symbols:
         printp(
             "The wheel references no external versioned symbols from "
             "system-provided shared libraries.",
@@ -168,8 +190,9 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     else:
         printp(
             "The wheel references external versioned symbols in these "
-            f"system-provided shared libraries: {', '.join(libs_with_versions)}",
+            "system-provided shared libraries:",
         )
+        print(_format_versioned_symbols(winfo.versioned_symbols))
 
     if winfo.sym_policy < policies.highest:
         printp(
@@ -194,7 +217,7 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             libs = winfo.external_refs[p.name].libs
             if len(libs):
                 printp(
-                    f"In order to achieve the tag platform tag {p.name!r} "
+                    f"In order to achieve the platform tag {p.name!r} "
                     "the following shared library dependencies "
                     "will need to be eliminated:",
                 )
@@ -202,7 +225,7 @@ def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             blacklist = winfo.external_refs[p.name].blacklist
             if len(blacklist):
                 printp(
-                    f"In order to achieve the tag platform tag {p.name!r} "
+                    f"In order to achieve the platform tag {p.name!r} "
                     "the following black-listed symbol dependencies "
                     "will need to be eliminated:",
                 )
